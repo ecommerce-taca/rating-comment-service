@@ -1,0 +1,3 @@
+export enum ReviewStatus { PUBLISHED = 'PUBLISHED', DELETED = 'DELETED', HIDDEN = 'HIDDEN' }
+export enum MediaStatus { UPLOADING = 'UPLOADING', SCANNING = 'SCANNING', READY = 'READY', REJECTED = 'REJECTED', DELETED = 'DELETED' }
+export enum ReplyStatus { PUBLISHED = 'PUBLISHED', DELETED = 'DELETED' }

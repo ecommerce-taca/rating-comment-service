@@ -1,0 +1,114 @@
+
+services:
+  mongodb:
+    image: mongo:8.0
+    container_name: taca-rating-mongodb
+    restart: unless-stopped
+    hostname: rating-mongodb
+    command: ["--replSet", "rs0", "--bind_ip_all"]
+    ports:
+      - "27027:27017"
+    environment:
+      MONGO_INITDB_DATABASE: ratingdb
+    volumes:
+      - rating_mongodb_data:/data/db
+    networks:
+      default:
+        aliases:
+          - rating-mongodb
+    healthcheck:
+      test:
+        - CMD
+        - mongosh
+        - --quiet
+        - --eval
+        - |
+          try {
+            if (rs.status().ok === 1 && db.hello().isWritablePrimary) {
+              quit(0);
+            }
+          } catch (e) {}
+          try {
+            rs.initiate({
+              _id: "rs0",
+              members: [{ _id: 0, host: "rating-mongodb:27017" }]
+            });
+          } catch (e) {}
+          quit(1);
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+
+  kafka:
+    image: apache/kafka:4.1.2
+    container_name: taca-rating-kafka
+    restart: unless-stopped
+    hostname: rating-kafka
+    ports:
+      - "29093:29092"
+    environment:
+      KAFKA_NODE_ID: 1
+      KAFKA_PROCESS_ROLES: broker,controller
+
+      KAFKA_LISTENERS: PLAINTEXT://:9092,PLAINTEXT_HOST://:29092,CONTROLLER://:9093
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://rating-kafka:9092,PLAINTEXT_HOST://localhost:29093
+
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT,PLAINTEXT_HOST:PLAINTEXT
+      KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
+      KAFKA_CONTROLLER_QUORUM_VOTERS: 1@rating-kafka:9093
+      KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
+
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
+      KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS: 0
+
+      CLUSTER_ID: MkU3OEVBNTcwNTJENDM2Qk
+
+    volumes:
+      - rating_kafka_data:/var/lib/kafka/data
+    networks:
+      default:
+        aliases:
+          - rating-kafka
+
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - /opt/kafka/bin/kafka-topics.sh --bootstrap-server localhost:9092 --list >/dev/null 2>&1
+      interval: 10s
+      timeout: 10s
+      retries: 10
+      start_period: 20s
+
+  rating-api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: taca-rating-api
+    restart: unless-stopped
+    ports:
+      - "3005:3000"
+    env_file:
+      - .env
+    depends_on:
+      mongodb:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
+    networks:
+      - default
+      - product-catalog-network
+
+volumes:
+  rating_mongodb_data:
+  rating_kafka_data:
+
+networks:
+  default:
+    name: rating-comment-service_default
+
+  product-catalog-network:
+    external: true
+    name: product-catalog-service_default
